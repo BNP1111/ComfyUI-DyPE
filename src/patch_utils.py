@@ -1,7 +1,7 @@
 import math
 import types
 import torch
-import torch.nn.func.tional as F
+import torch.nn.functional as F
 import comfy
 from comfy.model_patcher import ModelPatcher
 from comfy import model_sampling
