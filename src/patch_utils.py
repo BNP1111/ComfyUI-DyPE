@@ -1,7 +1,7 @@
 import math
 import types
 import torch
-import torch.nn.functional as F
+import torch.nn.func.tional as F
 import comfy
 from comfy.model_patcher import ModelPatcher
 from comfy import model_sampling
@@ -149,7 +149,7 @@ def apply_dype_to_model(model: ModelPatcher, model_type: str, width: int, height
         if base_hw_override is not None:
             m.model.diffusion_model._dype_base_hw = base_hw_override
 
-        def dype_patchify_and_embed(self, x, cap_feats, cap_mask, t, num_tokens, transformer_options={}):
+        def dype_patchify_and_embed(self, x, cap_feats, cap_mask, t, num_tokens, transformer_options={}, **kwargs):
             bsz = len(x)
             pH = pW = self.patch_size
             device = x[0].device
@@ -157,7 +157,7 @@ def apply_dype_to_model(model: ModelPatcher, model_type: str, width: int, height
             if self.pad_tokens_multiple is not None:
                 pad_extra = (-cap_feats.shape[1]) % self.pad_tokens_multiple
                 if pad_extra:
-                    cap_pad = self.cap_pad_token.to(device=cap_feats.device, dtype=cap_feats.dtype, copy=True).unsqueeze(0)
+                    cap_pad = torch.zeros(1, 1, cap_feats.shape[-1], device=cap_feats.device, dtype=cap_feats.dtype)
                     cap_feats = torch.cat((cap_feats, cap_pad.repeat(cap_feats.shape[0], pad_extra, 1)), dim=1)
 
             cap_pos_ids = torch.zeros(bsz, cap_feats.shape[1], 3, dtype=torch.float32, device=device)
@@ -220,6 +220,7 @@ def apply_dype_to_model(model: ModelPatcher, model_type: str, width: int, height
 
             freqs_cis = self.rope_embedder(torch.cat((cap_pos_ids, x_pos_ids), dim=1)).movedim(1, 2)
 
+            cap_feats = self.cap_embedder(cap_feats)
             for layer in self.context_refiner:
                 cap_feats = layer(cap_feats, cap_mask, freqs_cis[:, :cap_pos_ids.shape[1]], transformer_options=transformer_options)
 
@@ -231,7 +232,7 @@ def apply_dype_to_model(model: ModelPatcher, model_type: str, width: int, height
             mask = None
             img_sizes = [(H, W)] * bsz
             l_effective_cap_len = [cap_feats.shape[1]] * bsz
-            return padded_full_embed, mask, img_sizes, l_effective_cap_len, freqs_cis
+            return padded_full_embed, mask, img_sizes, l_effective_cap_len, freqs_cis, None
 
         m.add_object_patch(
             "diffusion_model.patchify_and_embed",
