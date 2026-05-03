@@ -22,7 +22,7 @@ def apply_dype_to_model(model: ModelPatcher, model_type: str, width: int, height
         is_nunchaku = True
     elif model_type == "qwen":
         is_qwen = True
-    elif model_type == "z_image":
+    elif model_type in ("zimage", "z_image"):
         is_z_image = True
     elif model_type == "flux":
         pass
