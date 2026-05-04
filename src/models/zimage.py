@@ -62,7 +62,7 @@ class PosEmbedZImage(DyPEBasePosEmbed):
 
         return pos_rescaled
 
-        def _estimate_axis_scale(self, axis_pos: torch.Tensor, base_axis_len: int) -> float:
+    def _estimate_axis_scale(self, axis_pos: torch.Tensor, base_axis_len: int) -> float:
         """
         Estimate the effective token length of one spatial axis from the actual
         coordinate grid, then convert it into a scale ratio against the base axis length.
