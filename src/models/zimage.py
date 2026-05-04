@@ -62,6 +62,47 @@ class PosEmbedZImage(DyPEBasePosEmbed):
 
         return pos_rescaled
 
+        def _estimate_axis_scale(self, axis_pos: torch.Tensor, base_axis_len: int) -> float:
+        """
+        Estimate the effective token length of one spatial axis from the actual
+        coordinate grid, then convert it into a scale ratio against the base axis length.
+
+        For Z-Image ultrawide / tall images:
+        - global scale is good for low-frequency structure stability
+        - local scale is better for per-axis high-frequency detail stability
+
+        We use this local scale later to soften linear_scale on the shorter axis.
+        """
+        coords = axis_pos.reshape(-1)
+
+        if coords.numel() <= 1:
+            return 1.0
+
+        unique_coords = torch.unique(coords)
+        if unique_coords.numel() <= 1:
+            return 1.0
+
+        unique_sorted, _ = torch.sort(unique_coords)
+        deltas = torch.diff(unique_sorted)
+
+        if deltas.numel() == 0:
+            return 1.0
+
+        valid_deltas = deltas[deltas > 1e-6]
+        if valid_deltas.numel() == 0:
+            return 1.0
+
+        step = torch.median(valid_deltas).item()
+        if step <= 0:
+            return 1.0
+
+        axis_span = float((unique_sorted[-1] - unique_sorted[0]).item())
+        current_len = axis_span / step + 1.0
+
+        base_len = max(float(base_axis_len), 1.0)
+        scale_local = current_len / base_len
+
+        return max(1.0, float(scale_local))
     def _calc_zimage_components(self, pos: torch.Tensor, freqs_dtype: torch.dtype):
         n_axes = pos.shape[-1]
         components = []
@@ -94,11 +135,22 @@ class PosEmbedZImage(DyPEBasePosEmbed):
 
                 # VISION YARN
                 if self.method == 'vision_yarn':
+                    scale_local = self._estimate_axis_scale(axis_pos, base_axis_len)
+
+                    # Hybrid linear scale:
+                    # - keep ntk_scale global for large-structure stability
+                    # - soften linear_scale toward local per-axis scale for detail stability
+                    linear_scale = math.sqrt(scale_local * scale_global)
+                    linear_scale = max(1.0, linear_scale)
+
                     dype_kwargs = {
-                        'dype': self.dype, 'current_timestep': self.current_timestep, 
-                        'dype_scale': self.dype_scale, 'dype_exponent': self.dype_exponent,
-                        'ntk_scale': scale_global, 'override_mscale': current_mscale,
-                        'linear_scale': scale_global 
+                        'dype': self.dype,
+                        'current_timestep': self.current_timestep,
+                        'dype_scale': self.dype_scale,
+                        'dype_exponent': self.dype_exponent,
+                        'ntk_scale': scale_global,
+                        'override_mscale': current_mscale,
+                        'linear_scale': linear_scale
                     }
                     cos, sin = get_1d_dype_yarn_pos_embed(
                         **common_kwargs, ori_max_pe_len=base_axis_len, **dype_kwargs
